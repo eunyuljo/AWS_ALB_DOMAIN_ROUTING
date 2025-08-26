@@ -1,6 +1,6 @@
-# AWS ALB Domain-based Routing with Single AZ Backend
+# AWS ALB Domain-based Routing with Multi-AZ Architecture
 
-This Terraform project demonstrates AWS Application Load Balancer (ALB) domain-based routing while deploying all backend targets in a single Availability Zone (ap-northeast-2a) for cost optimization.
+This Terraform project demonstrates AWS Application Load Balancer (ALB) domain-based routing with multi-AZ backend deployment and asymmetric routing analysis using Firewall/Router clients.
 
 ## 🏗️ Architecture Overview
 
@@ -19,35 +19,48 @@ Internet
 └─────────────────────────────────────────────────────────────┘
     │
     ▼ (Domain-based routing)
-┌─────────────────────────────────────────────────────────────┐
-│          ap-northeast-2a (Private Subnet)                   │
-│                                                             │
-│  ┌─────────────┐  ┌─────────────┐  ┌─────────────┐          │
-│  │ API Server  │  │ Web Server  │  │Default Sever│          │
-│  │ (Node.js)   │  │  (Apache)   │  │  (Apache)   │          │
-│  │   :8080     │  │    :80      │  │    :80      │          │
-│  └─────────────┘  └─────────────┘  └─────────────┘          │
-└─────────────────────────────────────────────────────────────┘
+┌──────────────────────────────────┬──────────────────────────────────┐
+│     ap-northeast-2a (Private)    │     ap-northeast-2c (Private)    │
+│                                  │                                  │
+│  ┌─────────────┐                 │                                  │
+│  │ API Server  │                 │                                  │
+│  │ (Node.js)   │                 │                                  │
+│  │   :8080     │                 │                                  │
+│  └─────────────┘                 │                                  │
+│                                  │                                  │
+│  ┌─────────────┐                 │  ┌─────────────┐                 │
+│  │ Web Server  │                 │  │ Web Server  │                 │
+│  │  (Apache)   │                 │  │  (Apache)   │                 │
+│  │    :80      │                 │  │    :80      │                 │
+│  └─────────────┘                 │  └─────────────┘                 │
+│                                  │                                  │
+│  ┌─────────────┐                 │  ┌─────────────┐                 │
+│  │  FW1 Client │                 │  │  FW2 Client │                 │
+│  │  (Router)   │                 │  │  (Router)   │                 │
+│  │ Test Tools  │                 │  │ Test Tools  │                 │
+│  └─────────────┘                 │  └─────────────┘                 │
+└──────────────────────────────────┴──────────────────────────────────┘
 ```
 
 ## 🌐 Domain Routing Configuration
 
 | Domain | Target Service | Port | Health Check | Backend |
 |--------|---------------|------|-------------|---------|
-| `api.example.com` | API Server (Node.js) | 8080 | `/health` | i-xxx (2a) |
-| `www.example.com` | Web Server (Apache) | 80 | `/` | i-yyy (2a) |
-| `example.com` | Web Server (Apache) | 80 | `/` | i-yyy (2a) |
+| `api.example.com` | API Server (Node.js) | 8080 | `/health` | i-xxx (2a only) |
+| `www.example.com` | Web Server (Apache) | 80 | `/` | i-yyy (2a) + i-zzz (2c) |
+| `example.com` | Web Server (Apache) | 80 | `/` | i-yyy (2a) + i-zzz (2c) |
 | `*` (all others) | Default Server (Apache) | 80 | `/` | i-yyy (2a) |
 
 ## 📋 Features
 
 - ✅ **High Availability ALB**: Deployed across 2 AZs (2a, 2c)
-- ✅ **Cost-Optimized Backend**: All servers in single AZ (2a)
+- ✅ **Multi-AZ Backend**: Web servers in both AZs, API server in 2a
 - ✅ **Domain-based Routing**: Different domains → different services
-- ✅ **Auto-scaling Ready**: Easy to extend to multi-AZ
+- ✅ **Asymmetric Routing Analysis**: FW clients for testing cross-AZ traffic
 - ✅ **SSM Access**: Built-in Session Manager support
 - ✅ **Infrastructure as Code**: Fully automated deployment
 - ✅ **Security Groups**: Proper network isolation
+- ✅ **Advanced Testing**: Built-in ALB testing scripts on FW clients
 
 ## 🚀 Quick Start
 
@@ -102,14 +115,31 @@ curl -H "Host: unknown.example.com" http://$ALB_DNS/
 ### 3. Access Servers via SSM
 
 ```bash
-# Get instance IDs
+# Get instance IDs and connection commands
 terraform output ec2_instance_info
+terraform output ssm_connect_commands
 
-# Connect to API server
-aws ssm start-session --target <api-server-instance-id>
+# Connect to servers
+aws ssm start-session --target <api-server-instance-id>    # API Server (2a)
+aws ssm start-session --target <web-server-2a-instance-id> # Web Server (2a)
+aws ssm start-session --target <web-server-2c-instance-id> # Web Server (2c)
+aws ssm start-session --target <fw1-instance-id>           # FW1 Client (2a)
+aws ssm start-session --target <fw2-instance-id>           # FW2 Client (2c)
+```
 
-# Connect to web server
-aws ssm start-session --target <web-server-instance-id>
+### 4. Test Asymmetric Routing
+
+```bash
+# Get asymmetric routing test commands
+terraform output fw_asymmetric_routing_test
+
+# Connect to FW1 (2a) and run ALB tests
+aws ssm start-session --target <fw1-instance-id>
+# Run: sudo /opt/fw1_alb_test.sh <ALB_DNS>
+
+# Connect to FW2 (2c) and run ALB tests  
+aws ssm start-session --target <fw2-instance-id>
+# Run: sudo /opt/fw2_alb_test.sh <ALB_DNS>
 ```
 
 ## 📁 Project Structure
@@ -160,27 +190,34 @@ key_pair_name = "my-key-pair"
 - **IAM Role**: SSM access for EC2 instances
 
 ### Services
-- **API Server**: Node.js Express server on port 8080
-- **Web Server**: Apache HTTP server on port 80
+- **API Server**: Node.js Express server on port 8080 (2a only)
+- **Web Server**: Apache HTTP server on port 80 (2a + 2c)
+- **FW1 Client**: Testing client in 2a with ALB test scripts
+- **FW2 Client**: Testing client in 2c with ALB test scripts
 - **Health Checks**: Automated health monitoring
 
 ## 💰 Cost Considerations
 
 ### Current Architecture
-- **Cross-AZ Traffic**: ALB (2c) → Backend (2a) incurs data transfer costs
-- **NAT Gateway**: Single NAT reduces costs vs multi-AZ setup
-- **Instance Hours**: Minimal with 2 t3.micro instances
+- **Cross-AZ Traffic**: ALB nodes communicate across AZs with backend targets
+- **Multi-AZ Backend**: Web servers in both AZs may reduce some cross-AZ traffic
+- **NAT Gateway**: Single NAT in 2a for all private subnet internet access
+- **Instance Hours**: 5 t3.micro instances (API + 2 Web + 2 FW clients)
 
 ### Cost Optimization Options
 
-1. **Single AZ ALB** (reduces availability):
+1. **Remove FW Clients** (reduces testing capabilities):
+   ```hcl
+   # Comment out fw1_router_2a and fw2_router_2c resources
+   ```
+
+2. **Single AZ ALB** (reduces availability but eliminates cross-AZ ALB costs):
    ```hcl
    subnets = [aws_subnet.public_subnet_2a.id]
    ```
 
-2. **Multi-AZ Backend** (increases availability):
+3. **Add API Server to 2c** (increases availability and redundancy):
    ```hcl
-   # Add instances in 2c AZ
    resource "aws_instance" "api_server_2c" { ... }
    ```
 
@@ -228,11 +265,26 @@ aws elbv2 describe-target-health \
   --target-group-arn <target-group-arn>
 ```
 
+### Asymmetric Routing Analysis
+
+```bash
+# Check FW1 test logs (2a zone)
+aws ssm start-session --target <fw1-instance-id>
+tail -f /var/log/fw1-alb-requests.log
+tail -f /var/log/fw1-continuous.log
+
+# Check FW2 test logs (2c zone)  
+aws ssm start-session --target <fw2-instance-id>
+tail -f /var/log/fw2-alb-requests.log
+tail -f /var/log/fw2-continuous.log
+```
+
 ### Common Issues
 
 1. **503 Service Unavailable**: Check target group health
 2. **Connection Timeout**: Verify security group rules
 3. **Wrong Service Response**: Check ALB listener rules priority
+4. **Asymmetric Routing**: Monitor FW client logs for cross-AZ patterns
 
 ## 🧹 Cleanup
 
@@ -263,6 +315,21 @@ For issues and questions:
 - Review Terraform state: `terraform show`
 - Validate configuration: `terraform validate`
 
+## 🎯 Key Learning Points
+
+### Asymmetric Routing Behavior
+- **FW1 (2a)**: Tests cross-AZ behavior when ALB routes to backends
+- **FW2 (2c)**: Demonstrates return path optimization in ALB
+- **Load Balancer**: Maintains connection state across AZ boundaries
+- **Cost Impact**: Cross-AZ data transfer charges apply for ALB-backend communication
+
+### Multi-AZ Architecture Benefits
+- **High Availability**: ALB deployed in multiple AZs for resilience
+- **Load Distribution**: Web servers in both AZs distribute traffic
+- **Fault Tolerance**: Single AZ failure doesn't impact service availability
+- **Testing Capability**: FW clients enable comprehensive routing analysis
+
 ---
 
-**Built with ❤️ using Terraform and AWS**
+**Built with ❤️ using Terraform and AWS**  
+**Designed for asymmetric routing analysis and multi-AZ ALB testing**
