@@ -1,173 +1,179 @@
-# AWS ALB Domain-based Routing with Multi-AZ Architecture
+# AWS ALB 도메인 기반 라우팅 with 멀티 AZ 아키텍처
 
-This Terraform project demonstrates AWS Application Load Balancer (ALB) domain-based routing with multi-AZ backend deployment and asymmetric routing analysis using Firewall/Router clients.
+이 Terraform 프로젝트는 AWS Application Load Balancer(ALB)를 사용한 도메인 기반 라우팅을 구현합니다. 서로 다른 도메인 요청을 각각 다른 백엔드 서비스로 라우팅하며, 멀티 AZ 배포를 통한 고가용성을 제공합니다.
 
-## 🏗️ Architecture Overview
+## 🏗️ 아키텍처 개요
 
 ```
-Internet
+인터넷
     │
     ▼
 ┌─────────────────────────────────────────────────────────────┐
-│                    Internet Gateway                         │
+│                  인터넷 게이트웨이                           │
 └─────────────────────────────────────────────────────────────┘
     │
     ▼
 ┌─────────────────────────────────────────────────────────────┐
-│                Application Load Balancer                    │
-│              (deployed in 2a and 2c AZs)                    │
+│              애플리케이션 로드 밸런서                         │
+│              (2a 및 2c AZ에 배포)                            │
 └─────────────────────────────────────────────────────────────┘
     │
-    ▼ (Domain-based routing)
+    ▼ (도메인 기반 라우팅)
 ┌──────────────────────────────────┬──────────────────────────────────┐
-│     ap-northeast-2a (Private)    │     ap-northeast-2c (Private)    │
+│     ap-northeast-2a (프라이빗)    │     ap-northeast-2c (프라이빗)    │
 │                                  │                                  │
 │  ┌─────────────┐                 │                                  │
-│  │ API Server  │                 │                                  │
+│  │ API 서버    │                  │                                 │
 │  │ (Node.js)   │                 │                                  │
 │  │   :8080     │                 │                                  │
 │  └─────────────┘                 │                                  │
 │                                  │                                  │
-│  ┌─────────────┐                 │  ┌─────────────┐                 │
-│  │ Web Server  │                 │  │ Web Server  │                 │
-│  │  (Apache)   │                 │  │  (Apache)   │                 │
-│  │    :80      │                 │  │    :80      │                 │
-│  └─────────────┘                 │  └─────────────┘                 │
+│  ┌─────────────┐                 │                                  │
+│  │ 웹 서버      │                 │                                  │
+│  │  (Apache)   │                 │                                  │
+│  │    :80      │                 │                                  │
+│  └─────────────┘                 │                                  │
 │                                  │                                  │
 │  ┌─────────────┐                 │  ┌─────────────┐                 │
-│  │  FW1 Client │                 │  │  FW2 Client │                 │
-│  │  (Router)   │                 │  │  (Router)   │                 │
-│  │ Test Tools  │                 │  │ Test Tools  │                 │
+│  │ 테스트 서버  │                 │  │ 테스트 서버  │                 │
+│  │  (Apache)   │                 │  │  (Apache)   │                 │
+│  │    :80      │                 │  │    :80      │                 │
 │  └─────────────┘                 │  └─────────────┘                 │
 └──────────────────────────────────┴──────────────────────────────────┘
 ```
 
-## 🌐 Domain Routing Configuration
+## 🌐 도메인 라우팅 설정
 
-| Domain | Target Service | Port | Health Check | Backend |
-|--------|---------------|------|-------------|---------|
-| `api.example.com` | API Server (Node.js) | 8080 | `/health` | i-xxx (2a only) |
-| `www.example.com` | Web Server (Apache) | 80 | `/` | i-yyy (2a) + i-zzz (2c) |
-| `example.com` | Web Server (Apache) | 80 | `/` | i-yyy (2a) + i-zzz (2c) |
-| `*` (all others) | Default Server (Apache) | 80 | `/` | i-yyy (2a) |
+| 도메인 | 대상 서비스 | 포트 | 헬스 체크 | 백엔드 |
+|--------|-------------|------|-----------|---------|
+| `api.example.com` | API 서버 (Node.js) | 8080 | `/health` | api-server-2a (2a 전용) |
+| `www.example.com` | 웹 서버 (Apache) | 80 | `/` | web-server-2a (2a 전용) |
+| `example.com` | 웹 서버 (Apache) | 80 | `/` | web-server-2a (2a 전용) |
+| `test.com` | 테스트 서버 (Apache) | 80 | `/` | test-server-2a (2a) + test-server-2c (2c) |
+| `*` (기타 모든 도메인) | 기본 서버 (Apache) | 80 | `/` | web-server-2a (2a) |
 
-## 📋 Features
+## 📋 주요 기능
 
-- ✅ **High Availability ALB**: Deployed across 2 AZs (2a, 2c)
-- ✅ **Multi-AZ Backend**: Web servers in both AZs, API server in 2a
-- ✅ **Domain-based Routing**: Different domains → different services
-- ✅ **Asymmetric Routing Analysis**: FW clients for testing cross-AZ traffic
-- ✅ **SSM Access**: Built-in Session Manager support
-- ✅ **Infrastructure as Code**: Fully automated deployment
-- ✅ **Security Groups**: Proper network isolation
-- ✅ **Advanced Testing**: Built-in ALB testing scripts on FW clients
+- ✅ **고가용성 ALB**: 2개 AZ(2a, 2c)에 배포
+- ✅ **도메인 기반 라우팅**: 서로 다른 도메인을 각각 다른 서비스로 라우팅
+- ✅ **멀티 서비스 지원**: API 서버, 웹 서버, 테스트 서버 분리 운영
+- ✅ **멀티 AZ 테스트**: test.com 도메인은 2a와 2c 양쪽 AZ에 배포
+- ✅ **SSM 접근**: 세션 매니저를 통한 보안 서버 접근
+- ✅ **코드형 인프라**: Terraform을 통한 완전 자동화 배포
+- ✅ **보안 그룹**: 서비스별 적절한 네트워크 격리
+- ✅ **헬스 체크**: 각 서비스별 맞춤형 헬스 체크 구성
 
-## 🚀 Quick Start
+## 🚀 빠른 시작
 
-### Prerequisites
+### 사전 요구사항
 
 - Terraform >= 1.0
-- AWS CLI configured with appropriate permissions
-- Valid AWS key pair (optional, for SSH access)
+- 적절한 권한으로 구성된 AWS CLI
+- 유효한 AWS 키 페어 (선택사항, SSH 접근용)
 
-### 1. Clone and Deploy
+### 1. 클론 및 배포
 
 ```bash
 git clone <repository-url>
 cd AWS_ALB_DOMAIN_ROUTING
 
-# Initialize Terraform
+# Terraform 초기화
 terraform init
 
-# Review the plan
+# 계획 검토
 terraform plan
 
-# Deploy infrastructure
+# 인프라 배포
 terraform apply
 ```
 
-### 2. Test Domain Routing
+### 2. 도메인 라우팅 테스트
 
-After deployment, get the ALB DNS name:
+배포 후 ALB DNS 이름 확인:
 
 ```bash
 terraform output alb_dns_name
 ```
 
-Test different domain routing:
+다양한 도메인 라우팅 테스트:
 
 ```bash
-# Get ALB DNS name
+# ALB DNS 이름 가져오기
 ALB_DNS=$(terraform output -raw alb_dns_name)
 
-# Test API endpoint
+# API 엔드포인트 테스트
 curl -H "Host: api.example.com" http://$ALB_DNS/health
 curl -H "Host: api.example.com" http://$ALB_DNS/api/status
 
-# Test web endpoints
+# 웹 엔드포인트 테스트
 curl -H "Host: www.example.com" http://$ALB_DNS/
 curl -H "Host: example.com" http://$ALB_DNS/
 
-# Test default routing
+# 테스트 서버 테스트 (멀티 AZ)
+curl -H "Host: test.com" http://$ALB_DNS/
+
+# 기본 라우팅 테스트
 curl -H "Host: unknown.example.com" http://$ALB_DNS/
 ```
 
-### 3. Access Servers via SSM
+### 3. SSM을 통한 서버 접근
 
 ```bash
-# Get instance IDs and connection commands
+# 인스턴스 ID 및 연결 명령어 확인
 terraform output ec2_instance_info
 terraform output ssm_connect_commands
 
-# Connect to servers
-aws ssm start-session --target <api-server-instance-id>    # API Server (2a)
-aws ssm start-session --target <web-server-2a-instance-id> # Web Server (2a)
-aws ssm start-session --target <web-server-2c-instance-id> # Web Server (2c)
-aws ssm start-session --target <fw1-instance-id>           # FW1 Client (2a)
-aws ssm start-session --target <fw2-instance-id>           # FW2 Client (2c)
+# 서버 연결
+aws ssm start-session --target <api-server-instance-id>    # API 서버 (2a)
+aws ssm start-session --target <web-server-instance-id>    # 웹 서버 (2a)
+aws ssm start-session --target <test-server-2a-instance-id> # 테스트 서버 (2a)
+aws ssm start-session --target <test-server-2c-instance-id> # 테스트 서버 (2c)
 ```
 
-### 4. Test Asymmetric Routing
+### 4. 멀티 AZ 테스트
 
 ```bash
-# Get asymmetric routing test commands
-terraform output fw_asymmetric_routing_test
+# 테스트 서버의 멀티 AZ 동작 확인 (test.com 도메인)
+# 여러 번 요청하여 로드 밸런싱 확인
+for i in {1..10}; do
+  curl -H "Host: test.com" http://$ALB_DNS/
+  echo ""
+done
 
-# Connect to FW1 (2a) and run ALB tests
-aws ssm start-session --target <fw1-instance-id>
-# Run: sudo /opt/fw1_alb_test.sh <ALB_DNS>
+# 각 서버에 직접 연결하여 응답 확인
+aws ssm start-session --target <test-server-2a-instance-id>
+# 서버에서: curl localhost
 
-# Connect to FW2 (2c) and run ALB tests  
-aws ssm start-session --target <fw2-instance-id>
-# Run: sudo /opt/fw2_alb_test.sh <ALB_DNS>
+aws ssm start-session --target <test-server-2c-instance-id>
+# 서버에서: curl localhost
 ```
 
-## 📁 Project Structure
+## 📁 프로젝트 구조
 
 ```
 AWS_ALB_DOMAIN_ROUTING/
-├── main.tf              # Main infrastructure (VPC, EC2, ALB)
-├── target_groups.tf     # ALB target groups and attachments
-├── listeners.tf         # ALB listeners and routing rules
-├── outputs.tf          # Output values and test commands
-├── variables.tf        # Input variables
-├── .gitignore          # Git ignore patterns
-└── README.md           # This documentation
+├── main.tf              # 메인 인프라 (VPC, EC2, ALB)
+├── target_groups.tf     # ALB 타겟 그룹 및 연결
+├── listeners.tf         # ALB 리스너 및 라우팅 규칙
+├── outputs.tf          # 출력 값 및 테스트 명령어
+├── variables.tf        # 입력 변수
+├── .gitignore          # Git 무시 패턴
+└── README.md           # 문서화
 ```
 
-## 🔧 Configuration
+## 🔧 설정
 
-### Variables
+### 변수
 
-| Variable | Description | Default | Required |
-|----------|-------------|---------|----------|
-| `aws_region` | AWS region for deployment | `ap-northeast-2` | No |
-| `instance_type` | EC2 instance type | `t3.micro` | No |
-| `key_pair_name` | AWS key pair for SSH access | `eyjo-fnf-test-key` | No |
+| 변수 | 설명 | 기본값 | 필수 |
+|------|------|--------|------|
+| `aws_region` | 배포할 AWS 리전 | `ap-northeast-2` | 아니오 |
+| `instance_type` | EC2 인스턴스 타입 | `t3.micro` | 아니오 |
+| `key_pair_name` | SSH 접근용 AWS 키 페어 | `eyjo-fnf-test-key` | 아니오 |
 
-### Customization
+### 사용자 정의
 
-Create a `terraform.tfvars` file for custom values:
+사용자 정의 값을 위한 `terraform.tfvars` 파일 생성:
 
 ```hcl
 aws_region = "us-west-2"
@@ -175,68 +181,68 @@ instance_type = "t3.small"
 key_pair_name = "my-key-pair"
 ```
 
-## 🏛️ Infrastructure Components
+## 🏛️ 인프라 구성 요소
 
-### Network
+### 네트워크
 - **VPC**: 10.0.0.0/16
-- **Public Subnets**: 10.0.1.0/24 (2a), 10.0.2.0/24 (2c)
-- **Private Subnets**: 10.0.3.0/24 (2a), 10.0.4.0/24 (2c)
-- **NAT Gateway**: Single NAT in 2a for cost optimization
+- **퍼블릭 서브넷**: 10.0.1.0/24 (2a), 10.0.2.0/24 (2c)
+- **프라이빗 서브넷**: 10.0.3.0/24 (2a), 10.0.4.0/24 (2c)
+- **NAT 게이트웨이**: 비용 최적화를 위해 2a에 단일 NAT
 
-### Security
-- **ALB Security Group**: 80, 443 from Internet
-- **Web Security Group**: 80 from ALB, 22 from VPC
-- **API Security Group**: 8080 from ALB, 22 from VPC
-- **IAM Role**: SSM access for EC2 instances
+### 보안
+- **ALB 보안 그룹**: 인터넷에서 80, 443 포트
+- **웹 보안 그룹**: ALB에서 80 포트, VPC에서 22 포트
+- **API 보안 그룹**: ALB에서 8080 포트, VPC에서 22 포트
+- **IAM 역할**: EC2 인스턴스용 SSM 접근
 
-### Services
-- **API Server**: Node.js Express server on port 8080 (2a only)
-- **Web Server**: Apache HTTP server on port 80 (2a + 2c)
-- **FW1 Client**: Testing client in 2a with ALB test scripts
-- **FW2 Client**: Testing client in 2c with ALB test scripts
-- **Health Checks**: Automated health monitoring
+### 서비스
+- **API 서버**: 8080 포트의 Node.js Express 서버 (2a 전용)
+- **웹 서버**: 80 포트의 Apache HTTP 서버 (2a 전용)
+- **테스트 서버**: 80 포트의 Apache HTTP 서버 (2a + 2c 멀티 AZ)
+- **헬스 체크**: 서비스별 맞춤형 자동화된 헬스 모니터링
 
 ## 💰 Cost Considerations
 
-### Current Architecture
-- **Cross-AZ Traffic**: ALB nodes communicate across AZs with backend targets
-- **Multi-AZ Backend**: Web servers in both AZs may reduce some cross-AZ traffic
-- **NAT Gateway**: Single NAT in 2a for all private subnet internet access
-- **Instance Hours**: 5 t3.micro instances (API + 2 Web + 2 FW clients)
+### 현재 아키텍처
+- **AZ 간 트래픽**: ALB 노드가 백엔드 타겟과 AZ 간 통신
+- **멀티 AZ 백엔드**: 테스트 서버만 두 AZ에 배포, test.com 도메인 트래픽 분산
+- **NAT 게이트웨이**: 모든 프라이빗 서브넷 인터넷 접근용 2a의 단일 NAT
+- **인스턴스 시간**: 4개 t3.micro 인스턴스 (API + 웹 + 2개 테스트)
 
-### Cost Optimization Options
+### 비용 최적화 옵션
 
-1. **Remove FW Clients** (reduces testing capabilities):
+1. **테스트 서버 단일 AZ로 변경** (테스트 기능 감소):
    ```hcl
-   # Comment out fw1_router_2a and fw2_router_2c resources
+   # test_server_2c 리소스 및 관련 타겟 그룹 연결 제거
    ```
 
-2. **Single AZ ALB** (reduces availability but eliminates cross-AZ ALB costs):
+2. **단일 AZ ALB** (가용성 감소, AZ 간 ALB 비용 제거):
    ```hcl
    subnets = [aws_subnet.public_subnet_2a.id]
    ```
 
-3. **Add API Server to 2c** (increases availability and redundancy):
+3. **2c에 API/웹 서버 추가** (가용성 및 중복성 향상):
    ```hcl
    resource "aws_instance" "api_server_2c" { ... }
+   resource "aws_instance" "web_server_2c" { ... }
    ```
 
-## 🔄 Scaling and Extensions
+## 🔄 확장성 및 확장 기능
 
-### Add Auto Scaling
+### 오토 스케일링 추가
 
 ```hcl
 resource "aws_autoscaling_group" "api_asg" {
   vpc_zone_identifier = [
     aws_subnet.private_subnet_2a.id,
-    aws_subnet.private_subnet_2c.id  # Multi-AZ scaling
+    aws_subnet.private_subnet_2c.id  # 멀티 AZ 스케일링
   ]
   target_group_arns = [aws_lb_target_group.api_tg.arn]
-  # ... other configuration
+  # ... 기타 설정
 }
 ```
 
-### Add HTTPS Support
+### HTTPS 지원 추가
 
 ```hcl
 resource "aws_lb_listener" "https" {
@@ -245,91 +251,92 @@ resource "aws_lb_listener" "https" {
   protocol          = "HTTPS"
   ssl_policy        = "ELBSecurityPolicy-TLS-1-2-2017-01"
   certificate_arn   = var.certificate_arn
-  # ... other configuration
+  # ... 기타 설정
 }
 ```
 
-## 🔍 Monitoring and Troubleshooting
+## 🔍 모니터링 및 문제 해결
 
-### Check Service Status
+### 서비스 상태 확인
 
 ```bash
-# Via SSM
+# SSM을 통한 확인
 aws ssm send-command \
   --instance-ids <instance-id> \
   --document-name "AWS-RunShellScript" \
   --parameters 'commands=["systemctl status api-server"]'
 
-# Via ALB Health Checks
+# ALB 헬스 체크를 통한 확인
 aws elbv2 describe-target-health \
   --target-group-arn <target-group-arn>
 ```
 
-### Asymmetric Routing Analysis
+### 멀티 AZ 로드 밸런싱 분석
 
 ```bash
-# Check FW1 test logs (2a zone)
-aws ssm start-session --target <fw1-instance-id>
-tail -f /var/log/fw1-alb-requests.log
-tail -f /var/log/fw1-continuous.log
+# 각 테스트 서버의 접근 로그 확인
+aws ssm start-session --target <test-server-2a-instance-id>
+sudo tail -f /var/log/httpd/access_log
 
-# Check FW2 test logs (2c zone)  
-aws ssm start-session --target <fw2-instance-id>
-tail -f /var/log/fw2-alb-requests.log
-tail -f /var/log/fw2-continuous.log
+aws ssm start-session --target <test-server-2c-instance-id>
+sudo tail -f /var/log/httpd/access_log
+
+# API 서버 로그 확인
+aws ssm start-session --target <api-server-instance-id>
+sudo journalctl -u api-server -f
 ```
 
-### Common Issues
+### 일반적인 문제
 
-1. **503 Service Unavailable**: Check target group health
-2. **Connection Timeout**: Verify security group rules
-3. **Wrong Service Response**: Check ALB listener rules priority
-4. **Asymmetric Routing**: Monitor FW client logs for cross-AZ patterns
+1. **503 Service Unavailable**: 타겟 그룹 헬스 확인
+2. **Connection Timeout**: 보안 그룹 규칙 확인
+3. **Wrong Service Response**: ALB 리스너 규칙 우선순위 확인
+4. **Load Balancing Issues**: test.com 도메인 요청 시 멀티 AZ 분산 확인
 
-## 🧹 Cleanup
+## 🧹 정리
 
-To destroy all resources:
+모든 리소스 삭제:
 
 ```bash
 terraform destroy
 ```
 
-**Note**: This will permanently delete all created resources.
+**주의**: 생성된 모든 리소스가 영구적으로 삭제됩니다.
 
-## 🤝 Contributing
+## 🤝 기여
 
-1. Fork the repository
-2. Create a feature branch
-3. Make your changes
-4. Test thoroughly
-5. Submit a pull request
+1. 리포지토리 포크
+2. 기능 브랜치 생성
+3. 변경사항 적용
+4. 충분한 테스트
+5. 풀 리퀘스트 제출
 
-## 📄 License
+## 📄 라이선스
 
-This project is for educational and demonstration purposes.
+이 프로젝트는 교육 및 시연 목적용입니다.
 
-## 🆘 Support
+## 🆘 지원
 
-For issues and questions:
-- Check AWS CloudWatch logs
-- Review Terraform state: `terraform show`
-- Validate configuration: `terraform validate`
+문제 및 질문 시:
+- AWS CloudWatch 로그 확인
+- Terraform 상태 검토: `terraform show`
+- 구성 검증: `terraform validate`
 
-## 🎯 Key Learning Points
+## 🎯 주요 학습 포인트
 
-### Asymmetric Routing Behavior
-- **FW1 (2a)**: Tests cross-AZ behavior when ALB routes to backends
-- **FW2 (2c)**: Demonstrates return path optimization in ALB
-- **Load Balancer**: Maintains connection state across AZ boundaries
-- **Cost Impact**: Cross-AZ data transfer charges apply for ALB-backend communication
+### 도메인 기반 라우팅
+- **API 서비스**: api.example.com → Node.js API 서버 (2a)
+- **웹 서비스**: www.example.com, example.com → Apache 웹 서버 (2a)
+- **테스트 서비스**: test.com → 멀티 AZ 테스트 서버 (2a + 2c)
+- **기본 라우팅**: 매치되지 않는 모든 도메인 → 기본 웹 서버 (2a)
 
-### Multi-AZ Architecture Benefits
-- **High Availability**: ALB deployed in multiple AZs for resilience
-- **Load Distribution**: Web servers in both AZs distribute traffic
-- **Fault Tolerance**: Single AZ failure doesn't impact service availability
-- **Testing Capability**: FW clients enable comprehensive routing analysis
+### 멀티 AZ 아키텍처 장점
+- **고가용성**: 복원력을 위해 여러 AZ에 ALB 배포
+- **선택적 멀티 AZ**: test.com만 멀티 AZ 배포로 비용 최적화
+- **서비스 분리**: 각 도메인별 독립적인 백엔드 서비스 운영
+- **헬스 체크**: 서비스별 맞춤형 헬스 체크로 안정성 확보
 
 ---
 
-**Built with ❤️ using Terraform and AWS**  
-**Designed for asymmetric routing analysis and multi-AZ ALB testing**
+**Terraform과 AWS로 ❤️ 제작**
+**도메인 기반 라우팅 및 멀티 AZ ALB 데모를 위해 설계됨**
