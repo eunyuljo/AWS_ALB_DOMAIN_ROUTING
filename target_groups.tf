@@ -96,3 +96,42 @@ resource "aws_lb_target_group_attachment" "default_tg_attachment_2a" {
   target_id        = aws_instance.web_server_2a.id
   port             = 80
 }
+
+# Target Group 4: 테스트 서비스 (test.com)
+resource "aws_lb_target_group" "test_tg" {
+  name     = "test-service-tg"
+  port     = 80
+  protocol = "HTTP"
+  vpc_id   = aws_vpc.main_vpc.id
+
+  health_check {
+    enabled             = true
+    healthy_threshold   = 2
+    interval            = 30
+    matcher             = "200"
+    path                = "/"
+    port                = "traffic-port"
+    protocol            = "HTTP"
+    timeout             = 5
+    unhealthy_threshold = 2
+  }
+
+  tags = {
+    Name    = "test-service-target-group"
+    Domain  = "test.com"
+    Service = "Test"
+  }
+}
+
+# 타겟 그룹 연결 - 멀티 AZ 테스트 서버 등록
+resource "aws_lb_target_group_attachment" "test_tg_attachment_2a" {
+  target_group_arn = aws_lb_target_group.test_tg.arn
+  target_id        = aws_instance.test_server_2a.id
+  port             = 80
+}
+
+resource "aws_lb_target_group_attachment" "test_tg_attachment_2c" {
+  target_group_arn = aws_lb_target_group.test_tg.arn
+  target_id        = aws_instance.test_server_2c.id
+  port             = 80
+}

@@ -61,3 +61,25 @@ resource "aws_lb_listener_rule" "web_domain" {
     Domain = "www.example.com"
   }
 }
+
+# 규칙 3: test.com → 테스트 서비스
+resource "aws_lb_listener_rule" "test_domain" {
+  listener_arn = aws_lb_listener.http.arn
+  priority     = 150
+
+  action {
+    type             = "forward"
+    target_group_arn = aws_lb_target_group.test_tg.arn
+  }
+
+  condition {
+    host_header {
+      values = ["test.com"]
+    }
+  }
+
+  tags = {
+    Name   = "test-domain-rule"
+    Domain = "test.com"
+  }
+}

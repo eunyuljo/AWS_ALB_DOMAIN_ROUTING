@@ -436,3 +436,53 @@ resource "aws_route_table_association" "private_rta_2c" {
   subnet_id      = aws_subnet.private_subnet_2c.id
   route_table_id = aws_route_table.private_rt.id
 }
+
+# ap-northeast-2a zone에 배치될 EC2 인스턴스 (테스트 서버)
+resource "aws_instance" "test_server_2a" {
+  ami                    = "ami-0c2acfcb2ac4d02a0"
+  instance_type          = "t3.micro"
+  subnet_id              = aws_subnet.private_subnet_2a.id
+  vpc_security_group_ids = [aws_security_group.web_sg.id]
+  iam_instance_profile   = aws_iam_instance_profile.ec2_ssm_profile.name
+
+  user_data = <<-EOF
+              #!/bin/bash
+              yum update -y
+              yum install -y httpd
+              systemctl start httpd
+              systemctl enable httpd
+              echo "<h1>Test Server in ap-northeast-2a</h1>" > /var/www/html/index.html
+              echo "<p>This server is for test.com domain routing</p>" >> /var/www/html/index.html
+              echo "<p>Running in ap-northeast-2a availability zone</p>" >> /var/www/html/index.html
+              echo "<p>Server ID: test-server-2a</p>" >> /var/www/html/index.html
+              EOF
+
+  tags = {
+    Name = "test-server-2a"
+  }
+}
+
+# ap-northeast-2c zone에 배치될 EC2 인스턴스 (테스트 서버)
+resource "aws_instance" "test_server_2c" {
+  ami                    = "ami-0c2acfcb2ac4d02a0"
+  instance_type          = "t3.micro"
+  subnet_id              = aws_subnet.private_subnet_2c.id
+  vpc_security_group_ids = [aws_security_group.web_sg.id]
+  iam_instance_profile   = aws_iam_instance_profile.ec2_ssm_profile.name
+
+  user_data = <<-EOF
+              #!/bin/bash
+              yum update -y
+              yum install -y httpd
+              systemctl start httpd
+              systemctl enable httpd
+              echo "<h1>Test Server in ap-northeast-2c</h1>" > /var/www/html/index.html
+              echo "<p>This server is for test.com domain routing</p>" >> /var/www/html/index.html
+              echo "<p>Running in ap-northeast-2c availability zone</p>" >> /var/www/html/index.html
+              echo "<p>Server ID: test-server-2c</p>" >> /var/www/html/index.html
+              EOF
+
+  tags = {
+    Name = "test-server-2c"
+  }
+}
